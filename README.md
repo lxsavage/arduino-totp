@@ -85,6 +85,11 @@ Used to change the private key being used.
 Used to sync the time on the Arduino with the executing computer
 
 1. Connect the Arduino to a serial port available to the PC
-2. Run `unixsync <device>` with `<device>` being the device name identified above
-3. The utility will keep running until interrupted, regularly sending sync messages to the Arduino
-4. If you followed this correctly, it should start displaying the code and expiration counter on the display
+2. Run `unixsync <device> [onetime flag]` with the arguments:
+  3. `<device>`: the device name to write to
+  4. `[onetime flag]`: optional; set to `1` to make the utility send one sync
+     message then exit
+3. The utility will keep running until interrupted, regularly sending sync
+   messages to the Arduino
+4. If you followed this correctly, it should start displaying the code and
+   expiration counter on the display

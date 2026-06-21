@@ -2,9 +2,10 @@
  * Sends time synchronization information for updating internal clock.
  * Written by Logan Savage
  *
- * unixsync <device>
+ * unixsync <device> [onetime flag]
  */
 #include <stdio.h>
+#include <string.h>
 #include <time.h>
 #include <signal.h>
 
@@ -65,9 +66,13 @@ void handle_interrupt(int sig) {
 
 int main(int argc, char** argv) {
     if (argc < 2) {
-        fprintf(stderr, "USAGE: %s <DEVICE>\nFind device using `ls /dev/cu.*` or equivalent\n", argv[0]);
+        fprintf(stderr, "USAGE: %s <DEVICE: /dev/cu.*> [onetime flag:1]", argv[0]);
+        fprintf(stderr, "Find device using `ls /dev/cu.*` or equivalent\n");
         return 1;
     }
+
+    unsigned f_onetime = argc >= 3 && strlen(argv[2]) > 0;
+    if (f_onetime) printf("onetime mode enabled\n");
 
     serial_fd = serial_open(argv[1], B9600);
     if (serial_fd <= 0) return 1;
@@ -102,7 +107,10 @@ int main(int argc, char** argv) {
         tcdrain(serial_fd);
 
         printf("Sent time sync: %ld\n", ts);
+        if (f_onetime) break;
         sleep(SYNC_RATE);
     }
+
+    close(serial_fd);
     return 0;
 }
