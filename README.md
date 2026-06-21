@@ -1,6 +1,6 @@
 # Arduino TOTP
 
-An Arduino TOTP setup storing the private key in EEPROM and getting time
+An Arduino-based TOTP storing the private key in EEPROM and getting time
 synchronization information from serial communication.
 
 ## Setup
@@ -10,7 +10,10 @@ This sketch requires the following libraries:
 - [Base32-Decode](https://github.com/dirkx/Arduino-Base32-Decode)
 - [TOTP](https://github.com/lucadentella/TOTP-Arduino)
 
-1. Setup the [hardware connections](#hardware-connections) as described below on the Arduino
+The setup of this system is as follows:
+
+1. Wire the [hardware connections](#hardware-connections) as described below to
+   the Arduino
 2. Write the `sketches/totp.ino` sketch to the Arduino
 3. Make the codeset and unixsync utilities for management. Currently only
    support POSIX-compatible systems
@@ -53,7 +56,12 @@ side 2 -> 10kΩ resistor -> 3.3V
 
 ## Utilities
 
-Note: to find the board you want to interact with, do one of the following after connecting them:
+> [!NOTE]
+> These utilities were designed with POSIX-compatible systems in mind (i.e.,
+> macOS and Linux-based distros). They will not work in their current form under
+> Windows due to differences in how IO is handled at a low level there.
+
+To find the board you want to interact with, do one of the following after connecting them:
 
 1. (with arduino-cli) `arduino-cli board list`
 2. (with ls) `ls /dev/cu.*`
