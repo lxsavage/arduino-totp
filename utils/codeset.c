@@ -82,8 +82,8 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    // Wait for restart
-    sleep(2);
+    // Wait for restart; added extra time to allow for user to react to hold prompt
+    sleep(5);
     printf("Release reset button\n");
 
     char msgbuf[256];
