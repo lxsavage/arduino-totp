@@ -15,7 +15,8 @@ void clear_key(uint16_t len, uint16_t offset) {
   EEPROM.write(offset, 0);
   EEPROM.write(1 + offset, 0);
   for (int i = 0; i < EEPROM.length(); i++) {
-    EEPROM.write(i + offset, 0);
+    uint8_t old = EEPROM.read(i + offset);
+    EEPROM.write(i + offset, !old);
   }
 }
 
