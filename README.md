@@ -14,11 +14,16 @@ The setup of this system is as follows:
 
 1. Wire the [hardware connections](#hardware-connections) as described below to
    the Arduino
-2. Write the `sketches/totp.ino` sketch to the Arduino
+2. Write the `sketches/totp_arduino/totp_arduino.ino` sketch to the Arduino
 3. Make the codeset and unixsync utilities for management. Currently only
    support POSIX-compatible systems
 4. Use `codeset` to write a base32 private key to the EEPROM
 5. Use `unixsync` as a daemon program to continuously sync time to the Arduino
+
+> [!NOTE]
+> You can securely clear the key made in `codeset` by using the totp_clearkey
+> sketch. Just connect a random source (e.g., a thermistor) to the A0 pin then
+> run!
 
 ### Hardware connections
 
@@ -56,7 +61,7 @@ side 2 -> 10kΩ resistor -> 3.3V
 
 ## Utilities
 
-> [!NOTE]
+> [!WARNING]
 > These utilities were designed with POSIX-compatible systems in mind (i.e.,
 > macOS and Linux-based distros). They will not work in their current form under
 > Windows due to differences in how IO is handled at a low level there.

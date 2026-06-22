@@ -1,3 +1,7 @@
+/**
+ * Arduino sketch for TOTP key generation
+ * Written by Logan Savage
+ */
 #include <Base32-Decode.h>
 #include <TOTP.h>
 #include <LiquidCrystal.h>
@@ -14,6 +18,10 @@
 // Hold this button when resetting to store a new base32 key
 #define SET_BTN 8
 
+// Memory offset for writing to EEPROM
+#define OFFSET 0
+
+// For debugging purposes; these don't need to be changed
 #define TOTP_KEY_MAX 64
 #define POLL_MS 1000
 
@@ -33,7 +41,6 @@ unsigned long time() {
   return start_ts + (millis() / 1000);
 }
 
-// For use with unixsync
 void sync_time() {
   unsigned long preread_offset = millis() / 1000;
   unsigned long ts = Serial.parseInt();
@@ -46,7 +53,7 @@ void set_key() {
   lcd.write("Waiting for");
   lcd.setCursor(0, 1);
   lcd.write("Private key...");
-  // Serial.println("Load private key now...");
+  Serial.println("Load private key now...");
   while (!Serial.available()) {}
 
   lcd.clear();
@@ -72,15 +79,15 @@ void set_key() {
   lcd.clear();
   lcd.setCursor(0, 0);
   lcd.write("Writing key...");
-  // Serial.println("Writing key to EEPROM");
+  Serial.println("Writing key to EEPROM");
 
   EEPROM.write(0, (uint16_t)decoded_len);
   for (int i = 0; i < decoded_len; i++) {
-    EEPROM.write(i+2, decoded[i]);
+    EEPROM.write(OFFSET+i+2, decoded[i]);
   }
 
-  // Serial.print(decoded_len);
-  // Serial.println(" bytes");
+  Serial.print(decoded_len);
+  Serial.println(" bytes");
 }
 
 size_t load_key(unsigned char out[TOTP_KEY_MAX]) {
@@ -88,15 +95,14 @@ size_t load_key(unsigned char out[TOTP_KEY_MAX]) {
   lcd.setCursor(0, 0);
   lcd.write("Retrieving key...");
   unsigned char r;
-  EEPROM.get(0, r);
+  EEPROM.get(OFFSET, r);
   if (r == 0) return;
 
-  // Convert EEPROM len value from big endian to little endian
   uint16_t len = EEPROM.read(1) << 8 | EEPROM.read(0);
   if (len == 0) return 0;
 
   for (size_t i = 0; i < len; i++) {
-    out[i] = EEPROM.read(i+2);
+    out[i] = EEPROM.read(OFFSET+i+2);
   }
   return (size_t)len;
 }
@@ -121,7 +127,7 @@ void setup() {
   }
 
   totp = new TOTP(decoded_key, decoded_len);
-  // Serial.println("Load UNIX timestamp now...");
+  Serial.println("Load UNIX timestamp now...");
 
   lcd.clear();
   lcd.setCursor(0, 0);
@@ -144,10 +150,10 @@ void loop() {
     lcd.print("Expires in   s");
   }
 
+  long now = time();
+
   static long last_change = 0;
   static char* code = nullptr;
-
-  long now = time();
   long current_T = now / 30;
   bool code_change = code == nullptr || first_time || current_T != last_change;
   if (code_change) {
