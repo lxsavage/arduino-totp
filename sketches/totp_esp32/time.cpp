@@ -22,8 +22,8 @@ namespace Time {
   }
 
 #ifdef ESP32
-  const char* ssid = "The Password Is Gullible";
-  const char* ppk = "2444666668888888000000000";
+  const char* ssid = "";
+  const char* ppk = "";
 
   WiFiUDP ntpUDP;
   NTPClient timeClient(ntpUDP);
