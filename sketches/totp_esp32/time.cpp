@@ -1,10 +1,9 @@
 #include <Arduino.h>
 
-extern HardwareSerial Serial;
+#include "constants.hpp"
+#include "storage.hpp"
+#include "time.hpp"
 
-#include "time.h"
-
-#ifdef ESP32
 #include <WiFi.h>
 #include <NTPClient.h>
 #include <WiFiUdp.h>
@@ -32,25 +31,32 @@ namespace Time {
     if (start_ts) return false;
 
     WiFi.disconnect();
-    WiFi.begin(ssid, ppk);
+    WiFi.begin(wifi.ssid, wifi.ppk);
     while (WiFi.status() != WL_CONNECTED) {
+      if (
+        WiFi.status() == WL_NO_SSID_AVAIL  ||
+        WiFi.status() == WL_CONNECT_FAILED
+      ) {
+        return false;
+      }
+
       delay(100);
     }
 
     timeClient.begin();
-    timeClient.setTimeOffset(0);
     timeClient.update();
+
+    last_sync_millis = millis();
     start_ts = timeClient.getEpochTime();
     return true;
   }
-#else
-  bool sync() {
-    if (!Serial.available()) return false;
-    long preread_offset = millis() / 1000;
-    long ts = Serial.parseInt();
-    if (ts != 0)
-      start_ts = ts - preread_offset;
-    return true;
+
+  bool ready() {
+    return start_ts != 0;
   }
-#endif
+  
+  unsigned long get() {
+    // Account for the number of seconds since the last sync
+    return start_ts + ((millis() - last_sync_millis) / 1000);
+  }
 }

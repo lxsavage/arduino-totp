@@ -7,7 +7,7 @@
 
 #include "mbedtls/md.h"
 
-namespace TOTP {
+namespace totp {
   static mbedtls_md_context_t ctx;
   static bool initialized = false;
 
@@ -19,7 +19,7 @@ namespace TOTP {
     initialized = true;
   }
 
-  bool generate(uint8_t* key, size_t key_len, long time, char* out) {
+  bool generate(unsigned char* key, size_t key_len, unsigned long time, char* out) {
     if (!initialized) return false;
 
     uint64_t steps = time / 30;

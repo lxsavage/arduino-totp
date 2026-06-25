@@ -4,67 +4,189 @@
  */
 #include <stdint.h>
 #include <EEPROM.h>
+
 #include <hd44780.h>
 #include <hd44780ioClass/hd44780_pinIO.h>
 
 #include <Base32-Decode.h>
 
 #include "constants.hpp"
+#include "storage.hpp"
 #include "totp.hpp"
 #include "time.hpp"
-#include "private_key.hpp"
 
 static bool first_time;
 
-static unsigned char decoded_key[TOTP_KEY_MAX];
-static size_t decoded_len;
+struct storage::PrivateKey decoded_key;
+struct storage::NetworkData network;
 
 static hd44780_pinIO* lcd = nullptr;
 
+void load_mode() {
+  storage::init();
+  
+  // Zero this out to prevent garbage data from memory padding from being written
+  struct storage::PrivateKey key = {
+    .key = { '\0' }
+  };
+
+  lcd->clear();
+  lcd->setCursor(0, 0);
+  lcd->write("LOAD MODE  > ...");
+  lcd->setCursor(0, 1);
+  lcd->write("Waiting for key");
+  Serial.println("Waiting for key...");
+  
+  unsigned long debounce_helper = millis();
+  while (!Serial.available()) {
+    delay(10);
+    if (millis() - debounce_helper > 2000 && digitalRead(SET_BTN) == HIGH) {
+      Serial.println("Skipped new key loading");
+      goto load_mode_network;
+    }
+  }
+  char key_buf[256];
+
+  {
+    size_t key_len = Serial.readBytesUntil('\n', key_buf, 255);
+    key_buf[key_len] = '\0';
+  }
+  
+
+  Serial.print("Secret (base32 encoded): ");
+  Serial.println(key_buf);
+
+  key.len = base32decode(key_buf, key.key, TOTP_KEY_MAX);
+  storage::write_privatekey(key);
+  if (!storage::commit_writes()) {
+    Serial.println("Saving key failed");
+    lcd->clear();
+    lcd->setCursor(0, 0);
+    lcd->write("ERROR");
+    lcd->setCursor(0, 1);
+    lcd->write("Key not saved");
+    delay(2000);
+    return;
+  }
+  Serial.println("Key commit successful");
+
+  lcd->clear();
+  lcd->setCursor(0, 0);
+  lcd->write("LOAD MODE");
+  lcd->setCursor(0, 1);
+  lcd->write("Saved key!");
+  delay(2000);
+
+load_mode_network:
+  // Zero these out to prevent garbage data from memory padding from being written
+  struct storage::NetworkData network = {
+    .ppk = { '\0' },
+    .ssid = { '\0' },
+  };
+
+  lcd->clear();
+  lcd->setCursor(0, 0);
+  lcd->write("LOAD MODE    ...");
+  lcd->setCursor(0, 1);
+  lcd->write("Waiting for SSID");
+  Serial.println("Waiting for SSID...");
+  
+  while (!Serial.available()) {
+    delay(10);
+  }
+
+  {
+    size_t key_len = Serial.readBytesUntil('\n', network.ssid, 32);
+    network.ppk[key_len] = '\0';
+  }
+
+  Serial.print("SSID: ");
+  Serial.println(network.ssid);
+
+  lcd->clear();
+  lcd->setCursor(0, 0);
+  lcd->write("LOAD MODE    ...");
+  lcd->setCursor(0, 1);
+  lcd->write("Waiting for PPK");
+  Serial.println("Waiting for PPK...");
+  
+  while (!Serial.available()) {
+    delay(10);
+  }
+
+  {
+    size_t key_len = Serial.readBytesUntil('\n', network.ppk, 64);
+    network.ppk[key_len] = '\0';
+  }
+
+  Serial.print("PPK: ");
+  Serial.println(network.ppk);
+
+  storage::write_wifi(network);
+  if (!storage::commit_writes()) {
+    Serial.println("Saving network failed");
+    lcd->clear();
+    lcd->setCursor(0, 0);
+    lcd->write("ERROR");
+    lcd->setCursor(0, 1);
+    lcd->write("Network not saved");
+    delay(2000);
+    return;
+  }
+
+  lcd->clear();
+  lcd->setCursor(0, 0);
+  lcd->write("LOAD MODE");
+  lcd->setCursor(0, 1);
+  lcd->write("Saved network!");
+  delay(2000);
+}
+
 void setup() {
   Serial.begin(BAUD_RATE);
-  TOTP::init();
-#ifdef ESP32
-  EEPROM.begin(TOTP_KEY_MAX + OFFSET + 2);
-#endif
 
   lcd = new hd44780_pinIO(RS, ENABLE, D4, D5, D6, D7);
   lcd->begin(16, 2);
 
   pinMode(SET_BTN, INPUT);
-  if (digitalRead(SET_BTN)) {
-    PrivateKey::set(lcd);
-  }
 
-  decoded_len = PrivateKey::load(lcd, decoded_key);
-  if (decoded_len <= 0) {
-    lcd->clear();
-    lcd->setCursor(0, 0);
-    lcd->write("ERROR");
-    lcd->setCursor(0, 1);
-    lcd->write("Key read failed!");
-    lcd->print(decoded_len);
-    Serial.printf("Key unset; len: %ld\n", decoded_len);
-    for (;;) {
-      delay(UINT32_MAX);
-    }
+  if (digitalRead(SET_BTN) == HIGH) {
+    load_mode();
+    ESP.restart();
   }
+  
+  storage::init();
+  storage::load_wifi(network);
+  storage::load_privatekey(decoded_key);
+
+  Serial.print("SSID: ");
+  Serial.println(network.ssid);
+  totp::init();
 
   lcd->clear();
   lcd->setCursor(0, 0);
   lcd->write("Waiting for");
   lcd->setCursor(0, 1);
-#ifdef ESP32
   lcd->write("NTP sync...");
-#else
-  lcd->write("UNIX time...");
-  Serial.println("Load UNIX timestamp now...");
-#endif
 }
 
 void loop() {
-  if (Time::sync()) first_time = true;
-  if (!Time::ready()) return;
+  if (rtc::sync(network)) first_time = true;
+  if (!rtc::ready()) {
+    if (first_time) return;
+
+    // rtc::sync and rtc::ready both returning false indicates connection failure
+    lcd->clear();
+    lcd->setCursor(0, 0);
+    lcd->write("ERROR");
+    lcd->setCursor(0, 1);
+    lcd->write("Reconfigure WiFi");
+
+    // Unrecoverable: lock until manual reset
+    for(;;) {
+      delay(1000);
+    }
+  }
 
   // Print a static text mask to prevent redrawing every letter every update
   if (first_time) {
@@ -73,10 +195,10 @@ void loop() {
     lcd->write("Expires in   s");
   }
   
-  long now = Time::get();
+  unsigned long now = rtc::get();
 
   static char code_buf[7];
-  if (!TOTP::generate(decoded_key, decoded_len, now, code_buf)) {
+  if (!totp::generate(decoded_key.key, decoded_key.len, now, code_buf)) {
     Serial.println("Failed to generate TOTP code");
     delay(POLL_MS);
     return;
