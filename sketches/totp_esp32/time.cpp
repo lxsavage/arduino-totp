@@ -7,30 +7,29 @@
 #include <WiFi.h>
 #include <NTPClient.h>
 #include <WiFiUdp.h>
-#endif
+#include <EEPROM.h>
 
-namespace Time {
-  long start_ts;
+namespace rtc {
+  static WiFiUDP ntpUDP;
+  static NTPClient timeClient(ntpUDP);
+  
+  static uint64_t start_ts;
+  static uint64_t last_sync_microsec;
 
-  long get() {
-    return start_ts + (millis() / 1000);
-  }
+  bool sync(struct storage::NetworkData& wifi) {
+    uint64_t now = esp_timer_get_time();
 
-  bool ready() {
-    return start_ts != 0;
-  }
+    // Restart the ESP32 if the millis has overflowed; easier to do it this way
+    // than to account for it in timing code
+    if (now < last_sync_microsec) ESP.restart();
 
-#ifdef ESP32
-  const char* ssid = "";
-  const char* ppk = "";
+    // Should skip processing if already set at least once, and
+    // TIME_SYNC_INTERVAL has not been reached yet
+    if (start_ts && (now - last_sync_microsec) / 1000 < TIME_SYNC_INTERVAL) {
+      return false;
+    }
 
-  WiFiUDP ntpUDP;
-  NTPClient timeClient(ntpUDP);
-
-  bool sync() {
-    if (start_ts) return false;
-
-    WiFi.disconnect();
+    WiFi.mode(WIFI_STA);
     WiFi.begin(wifi.ssid, wifi.ppk);
     while (WiFi.status() != WL_CONNECTED) {
       if (
@@ -46,8 +45,13 @@ namespace Time {
     timeClient.begin();
     timeClient.update();
 
-    last_sync_millis = millis();
-    start_ts = timeClient.getEpochTime();
+    last_sync_microsec = esp_timer_get_time();
+    start_ts = (uint64_t)timeClient.getEpochTime() * 1000000;
+
+    // Disable wifi to save power
+    WiFi.disconnect(true);
+    WiFi.mode(WIFI_OFF);
+
     return true;
   }
 
@@ -57,6 +61,6 @@ namespace Time {
   
   unsigned long get() {
     // Account for the number of seconds since the last sync
-    return start_ts + ((millis() - last_sync_millis) / 1000);
+    return (start_ts + (esp_timer_get_time() - last_sync_microsec)) / 1000000;
   }
 }

@@ -4,6 +4,7 @@
  */
 #include <stdint.h>
 #include <EEPROM.h>
+#include "esp_sleep.h"
 
 #include <hd44780.h>
 #include <hd44780ioClass/hd44780_pinIO.h>
@@ -17,18 +18,17 @@
 
 static bool first_time;
 
-struct storage::PrivateKey decoded_key;
-struct storage::NetworkData network;
+static struct storage::PrivateKey decoded_key;
+static struct storage::NetworkData network;
 
 static hd44780_pinIO* lcd = nullptr;
 
 void load_mode() {
   storage::init();
   
-  // Zero this out to prevent garbage data from memory padding from being written
-  struct storage::PrivateKey key = {
-    .key = { '\0' }
-  };
+  // Zero this out to prevent uninitialized data from memory from being written
+  // to storage
+  struct storage::PrivateKey key = { .key = { '\0' } };
 
   lcd->clear();
   lcd->setCursor(0, 0);
@@ -78,7 +78,8 @@ void load_mode() {
   delay(2000);
 
 load_mode_network:
-  // Zero these out to prevent garbage data from memory padding from being written
+  // Zero these out to prevent uninitialized data from memory from being written
+  // to storage
   struct storage::NetworkData network = {
     .ppk = { '\0' },
     .ssid = { '\0' },
@@ -143,6 +144,7 @@ load_mode_network:
 }
 
 void setup() {
+  esp_sleep_enable_timer_wakeup((uint64_t)POLL_MS * 1000ULL);
   Serial.begin(BAUD_RATE);
 
   lcd = new hd44780_pinIO(RS, ENABLE, D4, D5, D6, D7);
@@ -184,7 +186,7 @@ void loop() {
 
     // Unrecoverable: lock until manual reset
     for(;;) {
-      delay(1000);
+      esp_light_sleep_start();
     }
   }
 
@@ -200,7 +202,7 @@ void loop() {
   static char code_buf[7];
   if (!totp::generate(decoded_key.key, decoded_key.len, now, code_buf)) {
     Serial.println("Failed to generate TOTP code");
-    delay(POLL_MS);
+    esp_light_sleep_start();
     return;
   }
 
@@ -215,7 +217,6 @@ void loop() {
   lcd->setCursor(11, 1);
   lcd->write(exp_buf);
 
-  // Throttle polling
-  delay(POLL_MS);
+  esp_light_sleep_start();
   first_time = false;
 }
